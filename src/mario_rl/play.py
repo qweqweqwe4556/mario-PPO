@@ -1,0 +1,92 @@
+from __future__ import annotations
+
+import argparse
+import time
+from pathlib import Path
+
+from stable_baselines3 import PPO
+from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
+
+from mario_rl.env import make_env_factory
+from mario_rl.utils import PROJECT_ROOT, latest_checkpoint
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Play Super Mario Bros with a trained PPO model.")
+    parser.add_argument("--env-id", default="SuperMarioBros-1-1-v0")
+    parser.add_argument("--movement", choices=["right", "run-right", "simple", "complex"], default="right")
+    parser.add_argument("--model-path", type=Path, default=None)
+    parser.add_argument("--episodes", type=int, default=3)
+    parser.add_argument("--skip", type=int, default=4)
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--device", default="auto")
+    parser.add_argument("--delay", type=float, default=0.03, help="Seconds to sleep after each rendered step.")
+    parser.add_argument("--stuck-limit", type=int, default=120)
+    parser.add_argument("--run-bonus", type=float, default=0.0)
+    parser.add_argument("--no-run-penalty", type=float, default=0.0)
+    parser.add_argument("--stochastic", action="store_true")
+    return parser.parse_args()
+
+
+def resolve_model_path(model_path: Path | None) -> Path:
+    if model_path:
+        return model_path
+
+    final_model = PROJECT_ROOT / "models" / "final_model.zip"
+    if final_model.exists():
+        return final_model
+
+    checkpoint = latest_checkpoint(PROJECT_ROOT / "models" / "checkpoints")
+    if checkpoint:
+        return checkpoint
+
+    raise FileNotFoundError("No trained model found. Run training first.")
+
+
+def main() -> None:
+    args = parse_args()
+    model_path = resolve_model_path(args.model_path)
+
+    env = DummyVecEnv([
+        make_env_factory(
+            args.env_id,
+            args.movement,
+            args.skip,
+            args.seed,
+            rank=0,
+            render_mode="human",
+            stuck_limit=args.stuck_limit,
+            run_bonus=args.run_bonus,
+            no_run_penalty=args.no_run_penalty,
+        )
+    ])
+    env = VecFrameStack(env, n_stack=4, channels_order="last")
+
+    model = PPO.load(model_path, env=env, device=args.device)
+    print(f"Loaded model: {model_path}")
+
+    try:
+        for episode in range(args.episodes):
+            obs = env.reset()
+            done = [False]
+            total_reward = 0.0
+            while not done[0]:
+                action, _ = model.predict(obs, deterministic=not args.stochastic)
+                obs, reward, done, info = env.step(action)
+                total_reward += float(reward[0])
+                env.render("human")
+                if args.delay > 0:
+                    time.sleep(args.delay)
+
+            clean_info = {
+                key: value
+                for key, value in info[0].items()
+                if key != "terminal_observation"
+            }
+            print(f"Episode {episode + 1}: reward={total_reward:.2f}, info={clean_info}")
+    finally:
+        env.close()
+
+
+if __name__ == "__main__":
+    main()
