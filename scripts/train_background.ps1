@@ -1,21 +1,25 @@
 param(
-    [string]$CondaBat = "D:\conda3\condabin\conda.bat",
+    [string]$CondaBat = (Join-Path $env:USERPROFILE "anaconda3\condabin\conda.bat"),
     [string]$EnvName = "mario-rl",
-    [int]$TotalTimesteps = 500000,
+    [int]$TotalTimesteps = 100000,
     [string]$Movement = "right",
-    [string]$Device = "cpu",
+    [string]$Device = "auto",
     [int]$NEnvs = 1,
-    [string]$ModelDir = "models\pass_run",
-    [string]$TbLogName = "ppo_mario_pass_run",
+    [string]$ModelDir = "models\background",
+    [string]$TbLogName = "ppo_mario_background",
     [string]$LoadModel = "",
-    [int]$StuckLimit = 120
+    [int]$StuckLimit = 120,
+    [int]$MaxJumpHold = 0,
+    [int]$CheckpointEvery = 25000,
+    [int]$EvalEvery = 25000
 )
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 $LogDir = Join-Path $Root "logs"
-$LogFile = Join-Path $LogDir ("train_" + (Get-Date -Format "yyyyMMdd_HHmmss") + ".log")
-$ErrFile = Join-Path $LogDir ("train_" + (Get-Date -Format "yyyyMMdd_HHmmss") + ".err.log")
+$RunStamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$LogFile = Join-Path $LogDir ("train_" + $RunStamp + ".log")
+$ErrFile = Join-Path $LogDir ("train_" + $RunStamp + ".err.log")
 
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
@@ -45,13 +49,15 @@ $Arguments = @(
     "--tb-log-name",
     $TbLogName,
     "--checkpoint-every",
-    "25000",
+    "$CheckpointEvery",
     "--xpos-eval-every",
-    "25000",
+    "$EvalEvery",
     "--xpos-eval-episodes",
     "3",
     "--stuck-limit",
     "$StuckLimit",
+    "--max-jump-hold",
+    "$MaxJumpHold",
     "--learning-rate",
     "0.0001",
     "--clip-range",

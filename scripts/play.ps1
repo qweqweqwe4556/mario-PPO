@@ -1,17 +1,33 @@
 param(
-    [string]$CondaBat = "D:\conda3\condabin\conda.bat",
+    [string]$CondaBat = (Join-Path $env:USERPROFILE "anaconda3\condabin\conda.bat"),
     [string]$EnvName = "mario-rl",
     [string]$ModelPath = "",
-    [string]$Movement = "run-right",
-    [int]$Episodes = 3
+    [string]$Movement = "right",
+    [int]$Episodes = 3,
+    [string]$Device = "auto",
+    [int]$MaxJumpHold = 0,
+    [string]$FrontierActions = "",
+    [switch]$Stochastic
 )
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 
-$ArgsList = @("-m", "mario_rl.play", "--movement", $Movement, "--episodes", "$Episodes")
+$ArgsList = @(
+    "-m", "mario_rl.play",
+    "--movement", $Movement,
+    "--episodes", "$Episodes",
+    "--device", $Device,
+    "--max-jump-hold", "$MaxJumpHold"
+)
 if ($ModelPath -ne "") {
     $ArgsList += @("--model-path", $ModelPath)
+}
+if ($FrontierActions -ne "") {
+    $ArgsList += @("--frontier-actions", $FrontierActions)
+}
+if ($Stochastic) {
+    $ArgsList += "--stochastic"
 }
 
 Push-Location $Root

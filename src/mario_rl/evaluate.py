@@ -9,6 +9,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 
 from mario_rl.env import make_env_factory
 from mario_rl.play import resolve_model_path
+from mario_rl.utils import load_frontier_actions
 
 
 def parse_args() -> argparse.Namespace:
@@ -21,6 +22,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--device", default="auto")
     parser.add_argument("--stuck-limit", type=int, default=120)
+    parser.add_argument("--stuck-penalty", type=float, default=25.0)
+    parser.add_argument("--death-penalty", type=float, default=100.0)
+    parser.add_argument("--min-jump-hold", type=int, default=0)
+    parser.add_argument("--max-jump-hold", type=int, default=0)
+    parser.add_argument(
+        "--frontier-actions",
+        type=Path,
+        default=None,
+        help="Replay a JSON action prefix and evaluate from the saved NES frontier state.",
+    )
+    parser.add_argument("--milestone-x", type=int, nargs="*", default=[])
+    parser.add_argument("--milestone-bonus", type=float, default=0.0)
     parser.add_argument("--run-bonus", type=float, default=0.0)
     parser.add_argument("--no-run-penalty", type=float, default=0.0)
     parser.add_argument("--stochastic", action="store_true")
@@ -30,6 +43,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     model_path = resolve_model_path(args.model_path)
+    frontier_actions = load_frontier_actions(args.frontier_actions)
 
     env = DummyVecEnv([
         make_env_factory(
@@ -39,6 +53,13 @@ def main() -> None:
             args.seed,
             rank=0,
             stuck_limit=args.stuck_limit,
+            stuck_penalty=args.stuck_penalty,
+            death_penalty=args.death_penalty,
+            min_jump_hold=args.min_jump_hold,
+            max_jump_hold=args.max_jump_hold,
+            frontier_actions=frontier_actions,
+            milestone_x=tuple(args.milestone_x),
+            milestone_bonus=args.milestone_bonus,
             run_bonus=args.run_bonus,
             no_run_penalty=args.no_run_penalty,
         )
