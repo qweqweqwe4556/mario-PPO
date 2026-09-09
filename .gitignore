@@ -13,6 +13,8 @@ models/
 videos/
 logs/
 tensorboard/
+build/
+dist/
 
 .DS_Store
 Thumbs.db

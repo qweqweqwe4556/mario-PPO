@@ -1,179 +1,138 @@
-# Mario RL
+# Mario PPO
 
-用 `gym-super-mario-bros + Stable-Baselines3 PPO` 训练 AI 玩《Super Mario Bros.》。当前项目聚焦在 `SuperMarioBros-1-1-v0`，已经完成环境封装、训练、评估、图形化观察和断点续训脚本。
+用 `gym-super-mario-bros` 和 Stable-Baselines3 PPO 训练智能体完成《Super Mario Bros.》1-1。项目包含环境封装、奖励塑形、断点续训、双模式评估、前沿状态课程训练和 Windows PowerShell 脚本。
 
-> 当前状态：模型还没有稳定通关。现有最好版本在随机策略评估下可以推进到约 `x_pos=1800~1950`，但尚未拿到终点旗帜。
+## v0.2.0 状态
 
-## 项目功能
+这是一个可复现实验版本，尚未达到稳定通关：
 
-- 基于 `gym-super-mario-bros` 创建 Mario 环境
-- 使用 PPO 进行强化学习训练
-- 支持灰度化、缩放、跳帧、帧堆叠等常见图像预处理
-- 支持进度奖励、卡住惩罚、跑动奖励等 reward shaping
-- 支持断点续训、最佳 `x_pos` 模型保存、TensorBoard 日志
-- 支持命令行评估和图形化窗口观看 AI 游玩
+- 完整关卡模型从起点确定性运行可到达 `x_pos=2226`。
+- 前沿技能模型从 `x_pos=2095` 的保存状态随机评估 10 局均越过 `x_pos=2300`，最大到达 `x_pos=2994`。
+- 当前发布模型均未检测到 `flag_get=True`，请勿将前沿结果理解为完整关卡通关率。
 
-## 目录结构
+模型文件较大，不提交到 Git；发布包通过独立模型资产提供。详细参数和限制见 [MODEL_CARD.md](MODEL_CARD.md)。
 
-```text
-.
-├── environment.yml
-├── requirements.txt
-├── pyproject.toml
-├── scripts
-│   ├── setup_env.ps1
-│   ├── train.ps1
-│   ├── play.ps1
-│   ├── evaluate.ps1
-│   ├── train_background.ps1
-│   └── check_training.ps1
-├── src
-│   └── mario_rl
-│       ├── env.py
-│       ├── train.py
-│       ├── evaluate.py
-│       ├── play.py
-│       ├── smoke_test.py
-│       └── transfer_actions.py
-├── models
-└── runs
-```
+## 功能
 
-`models/`、`runs/`、`videos/` 等训练产物通常较大，默认不建议提交到 GitHub。需要分享模型时，可以单独上传到 GitHub Release 或其他文件存储服务。
+- 84×84 灰度观测、跳帧和 4 帧堆叠
+- 限制最短/最长连续按住跳跃键
+- 只奖励首次到达的新位置，并支持死亡、卡住、里程碑和跑动奖励
+- 保存定期 checkpoint、最终模型和确定性/随机最佳模型
+- 使用动作前缀恢复到关卡中段，混合完整起点与前沿起点并行训练
+- 无窗口评估、图形窗口播放、TensorBoard 和后台训练脚本
 
 ## 环境要求
 
-- Windows
-- Conda
+- Windows 10/11
+- Conda（默认查找 `%USERPROFILE%\anaconda3`）
 - Python 3.10
-- CPU 可训练，但速度较慢；有 CUDA GPU 会更适合长时间训练
+- CPU 可运行；CUDA GPU 适合训练，但并行模拟环境仍主要占用 CPU
 
-本机当前使用的 Conda 路径示例：
-
-```powershell
-D:\conda3
-```
-
-如果 Conda 安装在其他位置，需要相应修改命令里的路径。
+仓库不包含 ROM、Nintendo 素材或游戏二进制文件。`gym-super-mario-bros` 自带其运行所需的兼容环境。
 
 ## 安装
 
-在项目目录下执行：
+在 PowerShell 中进入仓库并运行：
 
 ```powershell
-cd D:\mario-RL
-powershell -ExecutionPolicy Bypass -File scripts\setup_env.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\setup_env.ps1
+& "$env:USERPROFILE\anaconda3\shell\condabin\conda-hook.ps1"
+conda activate mario-rl
+python -m mario_rl.smoke_test
 ```
 
-如果 PowerShell 禁止运行脚本，也可以直接用 Conda 手动安装：
+Conda 不在默认位置时：
 
 ```powershell
-D:\conda3\condabin\conda.bat env create -f environment.yml
-D:\conda3\condabin\conda.bat run -n mario-rl python -m pip install -r requirements.txt
-D:\conda3\condabin\conda.bat run -n mario-rl python -m pip install -e .
+.\scripts\setup_env.ps1 -CondaBat "D:\Miniconda3\condabin\conda.bat"
 ```
 
-安装完成后，可以做一次 smoke test：
+## 使用发布模型
+
+将 `mario-ppo-v0.2.0-models.zip` 解压到仓库的 `models\release`。完整关卡模型评估：
 
 ```powershell
-D:\conda3\envs\mario-rl\python.exe -m mario_rl.smoke_test
+python -m mario_rl.evaluate `
+  --model-path models\release\full_level_best.zip `
+  --movement right --episodes 10 --device auto `
+  --max-jump-hold 7 --stuck-limit 180 --stuck-penalty 25 `
+  --death-penalty 150 --milestone-x 2050 --milestone-bonus 250
 ```
 
-## 观看 AI 玩马里奥
-
-推荐先使用当前表现最好的模型：
+打开窗口观看：
 
 ```powershell
-D:\conda3\envs\mario-rl\python.exe -m mario_rl.play --model-path models\stochastic_from_898\best_xpos_model.zip --movement right --episodes 20 --stochastic --stuck-limit 0 --delay 0.05
+python -m mario_rl.play `
+  --model-path models\release\full_level_best.zip `
+  --movement right --episodes 3 --device auto `
+  --max-jump-hold 7 --stuck-limit 180 --death-penalty 150 --delay 0.03
 ```
 
-运行后会弹出 NES 图形窗口，可以直接看到 AI 控制马里奥。
-
-注意：这个模型是用 `right` 动作空间训练的，因此观看或评估时也要传入：
+评估前沿技能模型时必须同时提供动作前缀，并使用随机动作采样：
 
 ```powershell
---movement right
+python -m mario_rl.evaluate `
+  --model-path models\release\frontier_x2095_best.zip `
+  --frontier-actions configs\frontier_x2095.json `
+  --movement right --episodes 10 --stochastic --device auto `
+  --max-jump-hold 7 --stuck-limit 60 --stuck-penalty 150 `
+  --death-penalty 150 --milestone-x 2300 --milestone-bonus 250
 ```
 
-如果动作空间不一致，模型表现会明显异常。
+## 训练
 
-## 评估模型
+普通训练或从输出目录的最新 checkpoint 续训：
 
 ```powershell
-D:\conda3\envs\mario-rl\python.exe -m mario_rl.evaluate --model-path models\stochastic_from_898\best_xpos_model.zip --movement right --episodes 30 --stochastic --stuck-limit 0
+.\scripts\train.ps1 -TotalTimesteps 100000 -Device cuda -ModelDir models\baseline
 ```
 
-评估输出会包含平均奖励、平均 `x_pos`、最大 `x_pos`、是否到达终点旗帜等信息。
+`TotalTimesteps` 是本次调用新增的环境步数。默认每 25,000 步生成一个 checkpoint；第一次调用并不要求一次训练 100,000 步，可以先用 10,000–25,000 步验证配置。
 
-## 继续训练
-
-从当前目录已有 checkpoint 继续训练：
+复现下一轮混合课程训练配置：
 
 ```powershell
-D:\conda3\envs\mario-rl\python.exe -m mario_rl.train --total-timesteps 1000000 --movement right --device cpu --n-envs 1 --model-dir models\stochastic_from_898 --tb-log-name ppo_mario_stochastic_from_898 --checkpoint-every 25000 --xpos-eval-every 25000 --xpos-eval-episodes 10 --xpos-eval-stochastic --xpos-eval-metric max --learning-rate 0.00005 --clip-range 0.1 --ent-coef 0.08 --stuck-limit 180 --stuck-penalty 50 --progress-reward-scale 0.4 --step-penalty 0.04 --resume
+.\scripts\train_curriculum.ps1 -TotalTimesteps 50000 -Device cuda
 ```
 
-从某个最佳模型重新开一个训练目录：
+该脚本从完整关卡模型暖启动，使用 8 个并行环境，其中 4 个从 `x=2095` 前沿状态开始，同时分别评估完整起点和前沿起点。若模型文件位于别处，可传入 `-LoadModel`。
+
+后台运行并把输出写入 `logs`：
 
 ```powershell
-D:\conda3\envs\mario-rl\python.exe -m mario_rl.train --total-timesteps 1000000 --movement right --device cpu --n-envs 1 --model-dir models\stage_next --load-model models\stochastic_from_898\best_xpos_model.zip --reset-optimizer --checkpoint-every 25000 --xpos-eval-every 25000 --xpos-eval-episodes 10 --xpos-eval-stochastic --xpos-eval-metric max --learning-rate 0.00005 --clip-range 0.1 --ent-coef 0.08 --stuck-limit 180 --stuck-penalty 50 --progress-reward-scale 0.4 --step-penalty 0.04
+.\scripts\train_background.ps1 -TotalTimesteps 100000 -Device cuda -ModelDir models\next_run
+.\scripts\check_training.ps1
 ```
 
-## 查看训练曲线
+查看训练曲线：
 
 ```powershell
-D:\conda3\envs\mario-rl\python.exe -m tensorboard.main --logdir runs\tensorboard
+python -m tensorboard.main --logdir runs\tensorboard
 ```
 
-然后在浏览器打开 TensorBoard 提示的本地地址，一般是：
+## 目录
 
 ```text
-http://localhost:6006
+configs/                 前沿动作前缀和可复现配置
+docs/                    实验历史
+scripts/                 环境、训练、评估和运行脚本
+src/mario_rl/            Python 包
+tests/                   环境封装与配置测试
+models/                  本地模型，不提交 Git
+runs/                    TensorBoard 日志，不提交 Git
 ```
 
-## 当前实验记录
-
-| 模型目录 | 说明 | 当前表现 |
-| --- | --- | --- |
-| `models\anti_stuck_strong\best_xpos_model.zip` | 较稳定的确定性模型 | 约 `x_pos=898` |
-| `models\stochastic_from_898\best_xpos_model.zip` | 当前推荐观看/评估模型 | 随机评估最大约 `x_pos=1800~1950` |
-| `models\run_right_pass` | `run-right` 动作空间实验 | 暂未超过当前最佳 |
-
-目前还没有生成 `passed_model.zip`，说明还没有在评估回合中检测到 `flag_get=True`。
-
-## 常见问题
-
-### PowerShell 提示禁止运行脚本
-
-可以使用：
+## 开发验证
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\play.ps1
+python -m pip install -e ".[dev]"
+python -m pytest
+python -m compileall -q src tests
+python -m build --no-isolation
 ```
 
-也可以绕过脚本，直接运行 `python -m mario_rl.play`、`python -m mario_rl.train` 等命令。
+版本变化见 [CHANGELOG.md](CHANGELOG.md)。历史实验结论见 [docs/TRAINING_HISTORY.md](docs/TRAINING_HISTORY.md)。
 
-### 出现 Gym 兼容性警告
+## 版权
 
-`gym-super-mario-bros` 依赖旧版 Gym API，本项目通过 `shimmy` 做兼容。只要程序能正常训练、评估或弹出窗口，相关 warning 可以暂时忽略。
-
-### 为什么观看时窗口一闪而过
-
-常见原因是模型路径错误、环境没有安装好、或者动作空间参数和训练时不一致。优先确认：
-
-```powershell
---model-path models\stochastic_from_898\best_xpos_model.zip
---movement right
-```
-
-## 后续计划
-
-- 继续训练直到稳定通过 `1-1`
-- 调整 reward shaping，减少局部最优和卡住行为
-- 尝试更多随机种子和并行环境
-- 保存 AI 游玩视频，方便展示项目结果
-- 整理实验曲线和阶段性模型表现
-
-## 版权说明
-
-本项目仅用于课程实践、学习和研究。请不要在仓库中上传或分发任何商业游戏 ROM、Nintendo 原始素材或未经授权的资源。代码部分可以自行选择许可证后再公开发布。
+代码仓库当前没有附带开源许可证。游戏名称、角色和素材的权利归其各自权利人所有；本项目仅用于学习和研究。

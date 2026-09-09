@@ -5,9 +5,18 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 
-Get-Process python,conda -ErrorAction SilentlyContinue |
-    Select-Object Id,ProcessName,CPU,StartTime,Path |
-    Format-Table -AutoSize
+$TrainingProcesses = Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -match "mario_rl\.train" }
+
+if ($TrainingProcesses) {
+    Write-Host "Mario training is running:"
+    $TrainingProcesses |
+        Select-Object ProcessId,CreationDate,ExecutablePath,CommandLine |
+        Format-List
+}
+else {
+    Write-Host "No mario_rl.train process is running."
+}
 
 if ($LogPath -eq "") {
     $LatestLog = Get-ChildItem -LiteralPath (Join-Path $Root "logs") -Filter "train_*.log" -ErrorAction SilentlyContinue |
