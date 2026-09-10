@@ -1,0 +1,9 @@
+name: mario-rl
+channels:
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - setuptools=75.8.0
+  - wheel=0.45.1
+  - numpy=1.26.4

@@ -1,0 +1,27 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+venv/
+env/
+
+runs/
+models/
+videos/
+logs/
+tensorboard/
+build/
+dist/
+web/node_modules/
+web/dist/
+
+# Large release assets / model packs (keep out of git)
+*.zip
+mario-ppo-v0.2.0-models.zip
+mario-ppo-v0.2.0-source.zip
+
+.DS_Store
+Thumbs.db
