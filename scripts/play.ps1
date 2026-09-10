@@ -5,6 +5,7 @@ param(
     [string]$Movement = "right",
     [int]$Episodes = 3,
     [string]$Device = "auto",
+    [Nullable[int]]$PolicySeed = $null,
     [int]$MaxJumpHold = 0,
     [string]$FrontierActions = "",
     [switch]$Stochastic
@@ -28,6 +29,9 @@ if ($FrontierActions -ne "") {
 }
 if ($Stochastic) {
     $ArgsList += "--stochastic"
+}
+if ($null -ne $PolicySeed) {
+    $ArgsList += @("--policy-seed", "$PolicySeed")
 }
 
 Push-Location $Root

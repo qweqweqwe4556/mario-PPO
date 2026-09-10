@@ -2,13 +2,14 @@
 
 用 `gym-super-mario-bros` 和 Stable-Baselines3 PPO 训练智能体完成《Super Mario Bros.》1-1。项目包含环境封装、奖励塑形、断点续训、双模式评估、前沿状态课程训练和 Windows PowerShell 脚本。
 
-## v0.2.0 状态
+## v2.0.0 状态
 
-这是一个可复现实验版本，尚未达到稳定通关：
+这是一个可复现实验版本，已经观测到完整关卡通关，但尚未达到稳定通关：
 
-- 完整关卡模型从起点确定性运行可到达 `x_pos=2226`。
+- 冻结视觉特征后的完整关卡随机策略在 30 局评估中通关 1 次，成功率 `3.33%`，通关局最终 `x_pos=3161`。
+- 原完整关卡确定性模型可稳定到达 `x_pos=2226`，作为发布包中的 baseline 保留。
 - 前沿技能模型从 `x_pos=2095` 的保存状态随机评估 10 局均越过 `x_pos=2300`，最大到达 `x_pos=2994`。
-- 当前发布模型均未检测到 `flag_get=True`，请勿将前沿结果理解为完整关卡通关率。
+- 通关模型仍有明显随机性，请勿将单次成功理解为稳定通关率。
 
 模型文件较大，不提交到 Git；发布包通过独立模型资产提供。详细参数和限制见 [MODEL_CARD.md](MODEL_CARD.md)。
 
@@ -49,11 +50,24 @@ Conda 不在默认位置时：
 
 ## 使用发布模型
 
-将 `mario-ppo-v0.2.0-models.zip` 解压到仓库的 `models\release`。完整关卡模型评估：
+将 `mario-ppo-v2.0.0-models.zip` 解压到仓库的 `models\release`。复现已验证的完整关卡通关序列：
 
 ```powershell
 python -m mario_rl.evaluate `
   --model-path models\release\full_level_best.zip `
+  --movement right --episodes 4 --stochastic --device cuda `
+  --seed 10042 --policy-seed 20260910 `
+  --max-jump-hold 7 --stuck-limit 180 --stuck-penalty 25 `
+  --death-penalty 150 --milestone-x 2050 --milestone-bonus 250
+```
+
+该验证序列前三局失败，第 4 局应报告 `x_pos=3161` 和 `flag_get=True`。发布资产同时包含对应 MP4 和逐步动作轨迹。CUDA、PyTorch 或依赖版本变化可能改变随机采样序列。
+
+评估原确定性 baseline：
+
+```powershell
+python -m mario_rl.evaluate `
+  --model-path models\release\full_level_deterministic_baseline.zip `
   --movement right --episodes 10 --device auto `
   --max-jump-hold 7 --stuck-limit 180 --stuck-penalty 25 `
   --death-penalty 150 --milestone-x 2050 --milestone-bonus 250
@@ -64,8 +78,10 @@ python -m mario_rl.evaluate `
 ```powershell
 python -m mario_rl.play `
   --model-path models\release\full_level_best.zip `
-  --movement right --episodes 3 --device auto `
-  --max-jump-hold 7 --stuck-limit 180 --death-penalty 150 --delay 0.03
+  --movement right --episodes 4 --stochastic --device cuda `
+  --seed 10042 --policy-seed 20260910 `
+  --max-jump-hold 7 --stuck-limit 180 --stuck-penalty 25 `
+  --death-penalty 150 --milestone-x 2050 --milestone-bonus 250 --delay 0.03
 ```
 
 评估前沿技能模型时必须同时提供动作前缀，并使用随机动作采样：
@@ -89,13 +105,23 @@ python -m mario_rl.evaluate `
 
 `TotalTimesteps` 是本次调用新增的环境步数。默认每 25,000 步生成一个 checkpoint；第一次调用并不要求一次训练 100,000 步，可以先用 10,000–25,000 步验证配置。
 
+复现产生通关候选模型的冻结视觉特征微调：
+
+```powershell
+.\scripts\train_frozen_finetune.ps1 `
+  -LoadModel models\release\full_level_deterministic_baseline.zip `
+  -Seed 43 -TotalTimesteps 8192 -Device cuda
+```
+
+该脚本保持 PPO、Reward 和环境配置不变，只启用 `--freeze-features`，并使用 `n_epochs=3`、`learning_rate=5e-6` 和 `frontier_envs=0`。
+
 复现下一轮混合课程训练配置：
 
 ```powershell
 .\scripts\train_curriculum.ps1 -TotalTimesteps 50000 -Device cuda
 ```
 
-该脚本从完整关卡模型暖启动，使用 8 个并行环境，其中 4 个从 `x=2095` 前沿状态开始，同时分别评估完整起点和前沿起点。若模型文件位于别处，可传入 `-LoadModel`。
+该脚本从完整关卡确定性 baseline 暖启动，使用 8 个并行环境，默认其中 2 个从 `x=2095` 前沿状态开始，同时分别评估完整起点和前沿起点。若模型文件位于别处，可传入 `-LoadModel`。
 
 后台运行并把输出写入 `logs`：
 

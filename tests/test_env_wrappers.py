@@ -31,6 +31,20 @@ class RecordingEnv(gym.Env):
         self._reset_x = self.x_pos
 
 
+class ScriptedRewardEnv(gym.Env):
+    def __init__(self, transitions):
+        self.action_space = gym.spaces.Discrete(1)
+        self.observation_space = gym.spaces.Box(0, 255, (2, 2, 3), dtype=np.uint8)
+        self.transitions = iter(transitions)
+
+    def reset(self, **kwargs):
+        return np.zeros(self.observation_space.shape, dtype=np.uint8)
+
+    def step(self, action):
+        reward, done, info = next(self.transitions)
+        return np.zeros(self.observation_space.shape, dtype=np.uint8), reward, done, info
+
+
 def test_jump_hold_enforces_minimum_duration():
     base = RecordingEnv()
     env = JumpHold(base, ACTION_MEANINGS, minimum_steps=3)
@@ -74,3 +88,78 @@ def test_frontier_reset_uses_frontier_as_reward_baseline():
 
     env.reset()
     assert base.x_pos == 3
+
+
+def test_default_reward_does_not_add_a_second_progress_reward():
+    base = ScriptedRewardEnv([
+        (4.0, False, {"x_pos": 4, "life": 2, "flag_get": False}),
+    ])
+    env = MarioRewardWrapper(base, step_penalty=0.0, stuck_limit=0)
+    env.reset()
+
+    _, reward, _, info = env.step(0)
+
+    assert reward == 4.0
+    assert info["reward_components"]["environment"] == 4.0
+    assert info["reward_components"]["new_max_progress"] == 0.0
+
+
+def test_flag_reward_dominates_progress_and_is_reported():
+    base = ScriptedRewardEnv([
+        (3.0, True, {"x_pos": 3, "life": 2, "flag_get": True}),
+    ])
+    env = MarioRewardWrapper(
+        base,
+        step_penalty=0.0,
+        stuck_limit=0,
+        flag_reward=1000.0,
+    )
+    env.reset()
+
+    _, reward, done, info = env.step(0)
+
+    assert done
+    assert reward == 1003.0
+    assert info["reward_components"]["flag_get"] == 1000.0
+    assert "death_detected" not in info
+
+
+def test_milestone_bonus_is_preserved():
+    base = ScriptedRewardEnv([
+        (5.0, False, {"x_pos": 5, "life": 2, "flag_get": False}),
+    ])
+    env = MarioRewardWrapper(
+        base,
+        step_penalty=0.0,
+        stuck_limit=0,
+        milestone_x=(5,),
+        milestone_bonus=250.0,
+    )
+    env.reset()
+
+    _, reward, _, info = env.step(0)
+
+    assert reward == 255.0
+    assert info["reward_components"]["milestone"] == 250.0
+
+
+def test_terminal_death_does_not_also_trigger_stuck_timeout():
+    base = ScriptedRewardEnv([
+        (-25.0, True, {"x_pos": 0, "life": 1, "flag_get": False}),
+    ])
+    env = MarioRewardWrapper(
+        base,
+        step_penalty=0.0,
+        stuck_limit=1,
+        stuck_penalty=25.0,
+        death_penalty=100.0,
+    )
+    env.reset()
+
+    _, reward, done, info = env.step(0)
+
+    assert done
+    assert reward == -125.0
+    assert info["death_detected"]
+    assert "stuck_timeout" not in info
+    assert info["reward_components"]["stuck_timeout"] == 0.0

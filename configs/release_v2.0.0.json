@@ -1,0 +1,119 @@
+{
+  "release": "v2.0.0",
+  "created_at": "2026-09-10",
+  "environment": {
+    "env_id": "SuperMarioBros-1-1-v0",
+    "movement": "right",
+    "skip": 4,
+    "frame_stack": 4,
+    "observation": "84x84 grayscale"
+  },
+  "models": [
+    {
+      "asset": "full_level_best.zip",
+      "source": "models/freeze_features_ne3_seed43/final_model.zip",
+      "bytes": 7255679,
+      "sha256": "415BD39583D130F9581AD36DE58F15FFE0793202DC4B54EF16EAD69E1EDB6943",
+      "deterministic": false,
+      "frontier_actions": null,
+      "parameters": {
+        "max_jump_hold": 7,
+        "stuck_limit": 180,
+        "stuck_penalty": 25,
+        "death_penalty": 150,
+        "milestone_x": [2050],
+        "milestone_bonus": 250
+      },
+      "training": {
+        "warm_start": "full_level_deterministic_baseline.zip",
+        "seed": 43,
+        "steps": 8192,
+        "n_epochs": 3,
+        "learning_rate": 0.000005,
+        "clip_range": 0.1,
+        "target_kl": 0.025,
+        "frontier_envs": 0,
+        "freeze_features": true
+      },
+      "validation": {
+        "mode": "stochastic",
+        "episodes": 30,
+        "x_pos_mean": 1728.6666666666667,
+        "x_pos_max": 3161,
+        "flag_gets": 1,
+        "flag_success_rate": 0.03333333333333333
+      }
+    },
+    {
+      "asset": "full_level_deterministic_baseline.zip",
+      "source": "models/max_hold7_from_1958/best_deterministic_model.zip",
+      "bytes": 20472248,
+      "sha256": "CDE21A468C37C963FD7DA0E82018BF9947CD21F6F5D704F09DE8B5AB713B8E8C",
+      "deterministic": true,
+      "frontier_actions": null,
+      "parameters": {
+        "max_jump_hold": 7,
+        "stuck_limit": 180,
+        "stuck_penalty": 25,
+        "death_penalty": 150,
+        "milestone_x": [2050],
+        "milestone_bonus": 250
+      },
+      "validation": {
+        "episodes": 10,
+        "x_pos_mean": 2226.0,
+        "x_pos_max": 2226,
+        "flag_gets": 0
+      }
+    },
+    {
+      "asset": "frontier_x2095_best.zip",
+      "source": "models/frontier_curriculum_x2095/best_frontier_stochastic_model.zip",
+      "bytes": 20737542,
+      "sha256": "E9134C19F1B8624C81BEBD7ACF2B93FCCE37069406F2F9819EB45207526FB563",
+      "deterministic": false,
+      "frontier_actions": "frontier_x2095.json",
+      "parameters": {
+        "max_jump_hold": 7,
+        "stuck_limit": 60,
+        "stuck_penalty": 150,
+        "death_penalty": 150,
+        "milestone_x": [2300],
+        "milestone_bonus": 250
+      },
+      "validation": {
+        "episodes": 10,
+        "success_threshold": 2300,
+        "successes": 10,
+        "x_pos_mean": 2634.5,
+        "x_pos_max": 2994,
+        "flag_gets": 0
+      }
+    }
+  ],
+  "frontier_config": {
+    "asset": "frontier_x2095.json",
+    "actions": 244,
+    "sha256": "4BB1664784D8D9F7FD507F9BFF1483FD6F7BB2FADCA69351C511065353AF2E12"
+  },
+  "success_evidence": {
+    "video": {
+      "asset": "full_level_success_seed20260910.mp4",
+      "bytes": 1975063,
+      "sha256": "471CFC19B44D8C24AAE237E15D5345252370F1914B850F5628FFDA3DF3434129"
+    },
+    "trace": {
+      "asset": "full_level_success_seed20260910.json",
+      "bytes": 99615,
+      "sha256": "17809E94C792C8F461ABE40CDA5EAC14D0F2406D1882977DCBC37471361C3322"
+    },
+    "evaluation": {
+      "environment_seed": 10042,
+      "policy_seed": 20260910,
+      "successful_episode": 4,
+      "steps": 616,
+      "x_pos": 3161,
+      "flag_get": true
+    }
+  }
+}

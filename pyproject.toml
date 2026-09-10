@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mario-rl"
-version = "0.2.0"
+version = "2.0.0"
 description = "Train, evaluate, and inspect PPO agents on Super Mario Bros."
 readme = "README.md"
 requires-python = ">=3.10"

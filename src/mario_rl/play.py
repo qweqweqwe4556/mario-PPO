@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 
 from stable_baselines3 import PPO
+from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 
 from mario_rl.env import make_env_factory
@@ -19,11 +20,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--episodes", type=int, default=3)
     parser.add_argument("--skip", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--policy-seed",
+        type=int,
+        default=None,
+        help="Optional random seed for reproducible stochastic policy sampling.",
+    )
     parser.add_argument("--device", default="auto")
+    parser.add_argument("--progress-reward-scale", type=float, default=0.0)
+    parser.add_argument("--step-penalty", type=float, default=0.03)
     parser.add_argument("--delay", type=float, default=0.03, help="Seconds to sleep after each rendered step.")
     parser.add_argument("--stuck-limit", type=int, default=120)
     parser.add_argument("--stuck-penalty", type=float, default=25.0)
     parser.add_argument("--death-penalty", type=float, default=100.0)
+    parser.add_argument("--flag-reward", type=float, default=1000.0)
     parser.add_argument("--min-jump-hold", type=int, default=0)
     parser.add_argument("--max-jump-hold", type=int, default=0)
     parser.add_argument(
@@ -57,6 +67,8 @@ def resolve_model_path(model_path: Path | None) -> Path:
 
 def main() -> None:
     args = parse_args()
+    if args.policy_seed is not None:
+        set_random_seed(args.policy_seed, using_cuda=args.device != "cpu")
     model_path = resolve_model_path(args.model_path)
     frontier_actions = load_frontier_actions(args.frontier_actions)
 
@@ -68,9 +80,12 @@ def main() -> None:
             args.seed,
             rank=0,
             render_mode="human",
+            progress_reward_scale=args.progress_reward_scale,
+            step_penalty=args.step_penalty,
             stuck_limit=args.stuck_limit,
             stuck_penalty=args.stuck_penalty,
             death_penalty=args.death_penalty,
+            flag_reward=args.flag_reward,
             min_jump_hold=args.min_jump_hold,
             max_jump_hold=args.max_jump_hold,
             frontier_actions=frontier_actions,

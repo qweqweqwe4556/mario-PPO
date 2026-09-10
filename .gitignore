@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.pytest-tmp/
 .mypy_cache/
 .ruff_cache/
 *.egg-info/
@@ -15,6 +16,7 @@ logs/
 tensorboard/
 build/
 dist/
+dist-release/
 
 .DS_Store
 Thumbs.db

@@ -172,16 +172,17 @@ class ResizeGrayScaleObservation(gym.ObservationWrapper):
 
 
 class MarioRewardWrapper(gym.Wrapper):
-    """Reward shaping that favors forward progress and avoids waiting."""
+    """Reward shaping that makes level completion the dominant objective."""
 
     def __init__(
         self,
         env: gym.Env,
-        progress_reward_scale: float = 0.3,
+        progress_reward_scale: float = 0.0,
         step_penalty: float = 0.03,
         stuck_limit: int = 120,
         stuck_penalty: float = 25.0,
         death_penalty: float = 100.0,
+        flag_reward: float = 1000.0,
         milestone_x: tuple[int, ...] = (),
         milestone_bonus: float = 0.0,
         action_meanings: list[list[str]] | None = None,
@@ -198,6 +199,7 @@ class MarioRewardWrapper(gym.Wrapper):
         self.stuck_limit = stuck_limit
         self.stuck_penalty = stuck_penalty
         self.death_penalty = death_penalty
+        self.flag_reward = flag_reward
         self.milestone_x = tuple(sorted(set(milestone_x)))
         self.milestone_bonus = milestone_bonus
         self._reached_milestones: set[int] = set()
@@ -237,11 +239,15 @@ class MarioRewardWrapper(gym.Wrapper):
         else:
             self._steps_without_progress += 1
 
-        shaped_reward = float(reward)
-        # Reward only genuinely new progress. Revisited positions should not be
-        # rewarded again after Mario is pushed backwards.
-        shaped_reward += self.progress_reward_scale * max_x_delta
-        shaped_reward -= self.step_penalty
+        environment_reward = float(reward)
+        progress_bonus = self.progress_reward_scale * max_x_delta
+        time_penalty = self.step_penalty
+        no_progress_penalty = self.step_penalty if x_delta == 0 else 0.0
+        milestone_reward = 0.0
+        action_reward = 0.0
+        manual_death_penalty = 0.0
+        timeout_penalty = 0.0
+        completion_reward = 0.0
 
         reached_now = [
             threshold
@@ -251,37 +257,59 @@ class MarioRewardWrapper(gym.Wrapper):
         ]
         if reached_now:
             self._reached_milestones.update(reached_now)
-            shaped_reward += self.milestone_bonus * len(reached_now)
+            milestone_reward = self.milestone_bonus * len(reached_now)
             info = dict(info)
             info["milestones_reached"] = reached_now
-
-        if x_delta == 0:
-            shaped_reward -= self.step_penalty
 
         if 0 <= int(action) < len(self.action_meanings):
             action_buttons = self.action_meanings[int(action)]
             if "B" in action_buttons:
-                shaped_reward += self.run_bonus
+                action_reward = self.run_bonus
             else:
-                shaped_reward -= self.no_run_penalty
+                action_reward = -self.no_run_penalty
 
         flag_get = bool(info.get("flag_get", False))
         death_detected = not flag_get and (done or life < self._last_life)
         if death_detected:
-            shaped_reward -= self.death_penalty
+            manual_death_penalty = self.death_penalty
             info = dict(info)
             info["death_detected"] = True
         if (
             self.stuck_limit > 0
             and self._steps_without_progress >= self.stuck_limit
+            and not done
             and not flag_get
         ):
             done = True
-            shaped_reward -= self.stuck_penalty
+            timeout_penalty = self.stuck_penalty
             info = dict(info)
             info["stuck_timeout"] = True
         if flag_get:
-            shaped_reward += 200.0
+            completion_reward = self.flag_reward
+
+        shaped_reward = (
+            environment_reward
+            + progress_bonus
+            - time_penalty
+            - no_progress_penalty
+            + milestone_reward
+            + action_reward
+            - manual_death_penalty
+            - timeout_penalty
+            + completion_reward
+        )
+        info = dict(info)
+        info["reward_components"] = {
+            "environment": environment_reward,
+            "new_max_progress": progress_bonus,
+            "step_penalty": -time_penalty,
+            "no_progress_penalty": -no_progress_penalty,
+            "milestone": milestone_reward,
+            "action": action_reward,
+            "death": -manual_death_penalty,
+            "stuck_timeout": -timeout_penalty,
+            "flag_get": completion_reward,
+        }
 
         self._last_x_pos = x_pos
         self._last_life = life
@@ -295,11 +323,12 @@ def make_mario_env(
     skip: int = 4,
     seed: int | None = None,
     render_mode: str | None = None,
-    progress_reward_scale: float = 0.3,
+    progress_reward_scale: float = 0.0,
     step_penalty: float = 0.03,
     stuck_limit: int = 120,
     stuck_penalty: float = 25.0,
     death_penalty: float = 100.0,
+    flag_reward: float = 1000.0,
     min_jump_hold: int = 0,
     max_jump_hold: int = 0,
     frontier_actions: tuple[int, ...] = (),
@@ -335,6 +364,7 @@ def make_mario_env(
         stuck_limit=stuck_limit,
         stuck_penalty=stuck_penalty,
         death_penalty=death_penalty,
+        flag_reward=flag_reward,
         milestone_x=milestone_x,
         milestone_bonus=milestone_bonus,
         action_meanings=action_meanings,
@@ -352,11 +382,12 @@ def make_env_factory(
     seed: int,
     rank: int,
     render_mode: str | None = None,
-    progress_reward_scale: float = 0.3,
+    progress_reward_scale: float = 0.0,
     step_penalty: float = 0.03,
     stuck_limit: int = 120,
     stuck_penalty: float = 25.0,
     death_penalty: float = 100.0,
+    flag_reward: float = 1000.0,
     min_jump_hold: int = 0,
     max_jump_hold: int = 0,
     frontier_actions: tuple[int, ...] = (),
@@ -377,6 +408,7 @@ def make_env_factory(
             stuck_limit=stuck_limit,
             stuck_penalty=stuck_penalty,
             death_penalty=death_penalty,
+            flag_reward=flag_reward,
             min_jump_hold=min_jump_hold,
             max_jump_hold=max_jump_hold,
             frontier_actions=frontier_actions,

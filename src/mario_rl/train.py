@@ -19,8 +19,25 @@ from mario_rl.utils import (
 )
 
 
+def evaluation_score(
+    metric: str,
+    flag_gets: int,
+    progress_successes: int,
+    mean_x_pos: float,
+    max_x_pos: int,
+) -> float:
+    """Return the selected score; flag scoring deliberately has no tie-breaker."""
+    if metric == "flag":
+        return float(flag_gets)
+    if metric == "success":
+        return progress_successes * 10_000 + mean_x_pos
+    if metric == "max":
+        return float(max_x_pos)
+    return mean_x_pos
+
+
 class XPosEvalCallback(BaseCallback):
-    """Save the model that reaches the farthest average x position."""
+    """Evaluate completion and progress without conflating the two metrics."""
 
     def __init__(
         self,
@@ -36,14 +53,14 @@ class XPosEvalCallback(BaseCallback):
         super().__init__(verbose=1)
         self.eval_env = eval_env
         self.save_path = save_path
-        self.passed_path = save_path.with_name("passed_model")
+        self.passed_path = save_path.with_name(f"{save_path.name}_passed")
         self.eval_freq = eval_freq
         self.n_eval_episodes = n_eval_episodes
         self.deterministic = deterministic
         self.metric = metric
         self.success_threshold = success_threshold
         self.label = label
-        self.best_score = float("-inf")
+        self.best_score = 0.0 if metric == "flag" else float("-inf")
 
     def _on_step(self) -> bool:
         if self.n_calls % self.eval_freq != 0:
@@ -80,31 +97,44 @@ class XPosEvalCallback(BaseCallback):
         self.logger.record(f"{self.label}/mean_x_pos", mean_x_pos)
         self.logger.record(f"{self.label}/max_x_pos", max_x_pos)
         self.logger.record(f"{self.label}/flag_gets", flag_gets)
+        self.logger.record(
+            f"{self.label}/flag_success_rate",
+            flag_gets / len(x_positions),
+        )
         self.logger.record(f"{self.label}/mean_reward", mean_reward)
-        self.logger.record(f"{self.label}/successes", successes)
-        self.logger.record(f"{self.label}/success_rate", successes / len(x_positions))
-        if self.metric == "success":
-            score = successes * 10_000 + mean_x_pos
-        else:
-            score = max_x_pos if self.metric == "max" else mean_x_pos
+        self.logger.record(f"{self.label}/progress_successes", successes)
+        self.logger.record(
+            f"{self.label}/progress_success_rate",
+            successes / len(x_positions),
+        )
+        score = evaluation_score(
+            self.metric,
+            flag_gets,
+            successes,
+            mean_x_pos,
+            max_x_pos,
+        )
         print(
             f"x_pos_eval mode={self.label} mean_x_pos={mean_x_pos:.1f} "
             f"max_x_pos={max_x_pos} "
-            f"successes={successes}/{self.n_eval_episodes}@{self.success_threshold} "
+            f"progress_successes={successes}/{self.n_eval_episodes}"
+            f"@{self.success_threshold} "
             f"best_score={self.best_score:.1f} "
             f"flag_gets={flag_gets}/{self.n_eval_episodes} "
             f"mean_reward={mean_reward:.2f}",
             flush=True,
         )
 
-        if flag_gets > 0:
-            self.model.save(self.passed_path)
-            print(f"Saved passed model to {self.passed_path}.zip", flush=True)
-
         if score > self.best_score:
             self.best_score = score
             self.model.save(self.save_path)
-            print(f"Saved best x_pos model to {self.save_path}.zip", flush=True)
+            print(
+                f"Saved best {self.metric} model to {self.save_path}.zip",
+                flush=True,
+            )
+            if flag_gets > 0:
+                self.model.save(self.passed_path)
+                print(f"Saved passed model to {self.passed_path}.zip", flush=True)
 
         return True
 
@@ -124,6 +154,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--load-model", type=Path, default=None)
     parser.add_argument("--reset-optimizer", action="store_true")
+    parser.add_argument(
+        "--freeze-features",
+        action="store_true",
+        help="Freeze policy.features_extractor parameters during training.",
+    )
     parser.add_argument("--model-dir", type=Path, default=PROJECT_ROOT / "models")
     parser.add_argument("--log-dir", type=Path, default=PROJECT_ROOT / "runs" / "tensorboard")
     parser.add_argument("--tb-log-name", default="ppo_mario")
@@ -137,12 +172,17 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Evaluate and save deterministic and stochastic policies separately.",
     )
-    parser.add_argument("--xpos-eval-metric", choices=["mean", "max", "success"], default="mean")
+    parser.add_argument(
+        "--xpos-eval-metric",
+        choices=["flag", "mean", "max", "success"],
+        default="flag",
+    )
     parser.add_argument("--xpos-success-threshold", type=int, default=0)
     parser.add_argument("--xpos-eval-frontier", action="store_true")
     parser.add_argument("--learning-rate", type=float, default=2.5e-4)
     parser.add_argument("--n-steps", type=int, default=512)
     parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--n-epochs", type=int, default=10)
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--gae-lambda", type=float, default=0.95)
     parser.add_argument("--clip-range", type=float, default=0.2)
@@ -160,6 +200,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stuck-limit", type=int, default=120)
     parser.add_argument("--stuck-penalty", type=float, default=25.0)
     parser.add_argument("--death-penalty", type=float, default=100.0)
+    parser.add_argument("--flag-reward", type=float, default=1000.0)
     parser.add_argument("--min-jump-hold", type=int, default=0)
     parser.add_argument("--max-jump-hold", type=int, default=0)
     parser.add_argument("--frontier-actions", type=Path, default=None)
@@ -184,6 +225,7 @@ def build_vec_env(args: argparse.Namespace, frontier_actions: tuple[int, ...]):
             stuck_limit=args.stuck_limit,
             stuck_penalty=args.stuck_penalty,
             death_penalty=args.death_penalty,
+            flag_reward=args.flag_reward,
             min_jump_hold=args.min_jump_hold,
             max_jump_hold=args.max_jump_hold,
             frontier_actions=frontier_actions if rank < args.frontier_envs else (),
@@ -202,9 +244,15 @@ def build_vec_env(args: argparse.Namespace, frontier_actions: tuple[int, ...]):
     return env
 
 
+def set_features_frozen(model: PPO, frozen: bool) -> None:
+    for parameter in model.policy.features_extractor.parameters():
+        parameter.requires_grad_(not frozen)
+
+
 def apply_training_args(model: PPO, args: argparse.Namespace) -> None:
     model.n_steps = args.n_steps
     model.batch_size = args.batch_size
+    model.n_epochs = args.n_epochs
     model.learning_rate = args.learning_rate
     model.lr_schedule = get_schedule_fn(args.learning_rate)
     model.clip_range = get_schedule_fn(args.clip_range)
@@ -216,6 +264,7 @@ def apply_training_args(model: PPO, args: argparse.Namespace) -> None:
     model.ent_coef = args.ent_coef
     model.vf_coef = args.vf_coef
     model.max_grad_norm = args.max_grad_norm
+    set_features_frozen(model, args.freeze_features)
 
     if args.reset_optimizer:
         model.policy.optimizer = model.policy.optimizer_class(
@@ -287,6 +336,7 @@ def main() -> None:
             learning_rate=args.learning_rate,
             n_steps=args.n_steps,
             batch_size=args.batch_size,
+            n_epochs=args.n_epochs,
             gamma=args.gamma,
             gae_lambda=args.gae_lambda,
             clip_range=args.clip_range,
@@ -298,7 +348,17 @@ def main() -> None:
             tensorboard_log=str(log_dir),
             device=args.device,
         )
+        set_features_frozen(model, args.freeze_features)
         reset_num_timesteps = True
+
+    if args.xpos_eval_metric == "flag" and (checkpoint or args.load_model):
+        baseline_paths = [model_dir / "best_full_start_model.zip"]
+        if args.xpos_eval_both or args.xpos_eval_stochastic:
+            baseline_paths.append(model_dir / "best_full_start_stochastic_model.zip")
+        for baseline_path in baseline_paths:
+            if not baseline_path.exists():
+                model.save(baseline_path.with_suffix(""))
+                print(f"Saved warm-start baseline to {baseline_path}")
 
     callback = CheckpointCallback(
         save_freq=max(args.checkpoint_every // max(args.n_envs, 1), 1),
@@ -312,15 +372,27 @@ def main() -> None:
     if args.xpos_eval_every > 0:
         eval_modes = (
             [
-                ("eval_deterministic", True, "best_deterministic_model"),
-                ("eval_stochastic", False, "best_stochastic_model"),
+                ("eval_full_start_deterministic", True, "best_full_start_model"),
+                (
+                    "eval_full_start_stochastic",
+                    False,
+                    "best_full_start_stochastic_model",
+                ),
             ]
             if args.xpos_eval_both
             else [
                 (
-                    "eval_stochastic" if args.xpos_eval_stochastic else "eval_deterministic",
+                    (
+                        "eval_full_start_stochastic"
+                        if args.xpos_eval_stochastic
+                        else "eval_full_start_deterministic"
+                    ),
                     not args.xpos_eval_stochastic,
-                    "best_xpos_model",
+                    (
+                        "best_full_start_stochastic_model"
+                        if args.xpos_eval_stochastic
+                        else "best_full_start_model"
+                    ),
                 )
             ]
         )
@@ -330,7 +402,7 @@ def main() -> None:
                 raise ValueError("frontier-actions is required for frontier evaluation")
             eval_specs.extend(
                 (
-                    label.replace("eval_", "eval_frontier_", 1),
+                    label.replace("eval_full_start_", "eval_frontier_", 1),
                     deterministic,
                     save_name.replace("best_", "best_frontier_", 1),
                     frontier_actions,
@@ -351,6 +423,7 @@ def main() -> None:
                     stuck_limit=args.stuck_limit,
                     stuck_penalty=args.stuck_penalty,
                     death_penalty=args.death_penalty,
+                    flag_reward=args.flag_reward,
                     min_jump_hold=args.min_jump_hold,
                     max_jump_hold=args.max_jump_hold,
                     frontier_actions=eval_frontier_actions,
