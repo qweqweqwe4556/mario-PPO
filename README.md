@@ -12,6 +12,16 @@
 
 模型文件较大，不提交到 Git；发布包通过独立模型资产提供。详细参数和限制见 [MODEL_CARD.md](MODEL_CARD.md)。
 
+## v1.0.0 状态
+
+在 v0.2.0 训练与发布模型能力之上，本分支增加课程演示用前端控制台：
+
+- Web 页面内嵌马里奥游戏画面（WebSocket 推送 NES 帧，无需再单独弹窗）。
+- 支持页内切换完整关卡 / 前沿技能模型，并同步显示 `x_pos`、奖励与进度轨道。
+- 仍可使用原有命令行 `evaluate` / `play`；演示推荐走下方「课程演示控制台」。
+
+前端源码在 `web/`，演示 API 为 `python -m mario_rl.demo_api`。模型文件仍不提交到 Git，需自行放到 `models\release`。
+
 ## 功能
 
 - 84×84 灰度观测、跳帧和 4 帧堆叠
@@ -20,6 +30,7 @@
 - 保存定期 checkpoint、最终模型和确定性/随机最佳模型
 - 使用动作前缀恢复到关卡中段，混合完整起点与前沿起点并行训练
 - 无窗口评估、图形窗口播放、TensorBoard 和后台训练脚本
+- 课程演示 Web 控制台：页内播放、模型切换与实时指标
 
 ## 环境要求
 
@@ -112,20 +123,25 @@ python -m tensorboard.main --logdir runs\tensorboard
 
 ## 课程演示控制台
 
-仓库附带 Web 演示前端（`web/`）与 FastAPI 后端（`python -m mario_rl.demo_api`）：
+`v1.0.0` 附带 Web 演示前端（`web/`，Vite + React）与 FastAPI 后端（`mario_rl.demo_api`）：
 
 - 品牌化演示页：模型切换、发布指标、训练故事
-- **页内嵌入游戏画面**：WebSocket 推送 NES RGB 帧到浏览器 Canvas（无需额外弹窗）
+- 页内嵌入游戏画面：WebSocket 推送 NES RGB 帧到浏览器 Canvas
 - 无画面快速评估：SSE 实时推送 `x_pos` / reward，关卡进度条可视化
 
+依赖：已按上文创建并激活 `mario-rl`；演示 API 额外需要 `fastapi` / `uvicorn`（可用 `pip install -e ".[demo]"`）。前端需本机已安装 Node.js。
+
 ```powershell
+# 安装演示 API 依赖（首次）
+python -m pip install -e ".[demo]"
+
 # 安装前端依赖（首次）
 cd web
 npm install
 cd ..
 
-# 终端 1：API（使用 mario-rl 环境的 Python）
-D:\anaconda\envs\mario-rl\python.exe -m mario_rl.demo_api
+# 终端 1：API
+python -m mario_rl.demo_api
 
 # 终端 2：前端
 cd web
